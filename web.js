@@ -1,49 +1,153 @@
 // web.js
-var FACEBOOK_APP_ID = 207497116103821;
-var FACEBOOK_APP_SECRET = "35f151155d0af455a217d291f919989b";
-var express = require("express");
-var logfmt = require("logfmt");
-var passport = require("passport");
-var FacebookStrategy = require('passport-facebook-canvas');
+
+var express = require('express');
+var fs = require('fs');
+var url = require('url');
+var logfmt = require('logfmt');
+
+var FBAPP = {
+    id : 207497116103821,
+    secret : '35f151155d0af455a217d291f919989b',
+    ns : 'artyfbtestns',
+    scope : ''
+};
+
 var app = express();
 
-passport.use(new FacebookStrategy({
-    clientID : FACEBOOK_APP_ID,
-    clientSecret : FACEBOOK_APP_SECRET,
-    callbackURL : "http://intense-basin-4765.herokuapp.com/auth/facebook/callback"
-}, function(accessToken, refreshToken, profile, done) {
-    User.findOrCreate({
-        facebookID : profile.id
-    }, function(err, user) {
-        return done(err, user);
-    });
-}));
-
-app.use(logfmt.requestLogger());
-app.use(express.cookieParser());
-app.use(express.bodyParser());
-app.use(express.session({
-    secret : 'SECRET'
-}));
-app.use(passport.initialize());
-app.use(passport.session());
-
-app.get('/auth/facebook', passport.authenticate('facebook-canvas'));
-app.get('/auth/facebook/callback', passport.authenticate('facebook-canvas', {
-    successRedirect : '/',
-    failureRedirect : '/error'
-}));
-
-app.post('/auth/facebook/canvas', passport.authenticate('facebook-canvas', {
-    successRedirect : '/',
-    failureRedirect : '/auth/facebook/canvas/autologin'
-}));
-
-app.get('/auth/facebook/canvas/autologin', function(req, res) {
-    res.send('<!DOCTYPE html><body><script type="text/javascript">'
-            + 'top.location.href = "/auth/facebook";</script></body></html>');
+// The URL to our Canvas Application.
+// https://developers.facebook.com/docs/guides/canvas/
+var canvasURL = url.format({
+    protocol : 'https',
+    host : 'apps.facebook.com',
+    pathname : FBAPP.ns + '/'
 });
 
+// Makes a URL to the Facebook Login dialog.
+// https://developers.facebook.com/docs/authentication/canvas/
+function loginURL(redirectURI) {
+    return url.format({
+        protocol : 'https',
+        host : 'www.facebook.com',
+        pathname : 'dialog/oauth',
+        query : {
+            client_id : FBAPP.id,
+            redirect_uri : redirectURI,
+            scope : FBAPP.scope,
+            response_type : 'none'
+        }
+    });
+}
+
+// Inline our JavaScript and boot() it.
+var externalJS = fs.readFileSync(__dirname + '/js/client.js', 'utf8');
+function js(conf) {
+    conf.canvasURL = canvasURL;
+    conf.appId = FBAPP.id;
+    return ('<div id="fb-root"></div>' + '<script>' + externalJS + 'boot(' + JSON.stringify(conf)
+            + ')' + '</script>');
+}
+
+// Get the access_token from the signed request.
+// https://developers.facebook.com/docs/authentication/server-side/
+function getAccessToken(sr, cb) {
+    if (!sr) {
+        return process.nextTick(cb.bind(null, new Error('no signed request')));
+    }
+    if (sr.oauth_token) {
+        return process.nextTick(cb.bind(null, null, sr.oauth_token));
+    }
+    if (!sr.code) {
+        return process.nextTick(cb.bind(null, new Error('no token or code')));
+    }
+    request.get({
+        url : 'https://graph.facebook.com/oauth/access_token',
+        qs : {
+            client_id : FBAPP.id,
+            client_secret : FBAPP.secret,
+            code : sr.code,
+            redirect_uri : '' // the cookie uses a empty redirect_uri
+        },
+        encoding : 'utf8'
+    }, function getAccessTokenCb(er, res, body) {
+        if (er) {
+            return cb(er);
+        }
+        var r = querystring.parse(body);
+        if (r && r.access_token) {
+            return cb(null, r.access_token);
+        }
+        cb(new Error('unexpected access_token exchange: ' + body));
+    });
+}
+
+// Get the /me response for the user.
+// https://developers.facebook.com/docs/reference/api/user/
+function graphMe(sr, cb) {
+    getAccessToken(sr, function graphMeAccessTokenCb(er, accessToken) {
+        if (er) {
+            return cb(er);
+        }
+        request.get({
+            url : 'https://graph.facebook.com/me',
+            qs : {
+                access_token : accessToken
+            },
+            json : true
+        }, function graphMeRequestCb(er, res, body) {
+            if (er) {
+                return cb(er);
+            }
+            console.log(body);
+            cb(null, body);
+        });
+    });
+}
+
+// Send the login page response.
+function sendLogin(req, res, next) {
+    res.send(200, '<!doctype html>'
+            + 'Welcome unknown user. Click one of these to continue:<br><br>'
+            + '<a target="_top" href=' + JSON.stringify(loginURL(canvasURL)) + '>'
+            + 'Full Page Canvas Login' + '</a><br><br>' + '<div class="fb-login-button" scope="'
+            + FBAPP.scope + '">' + 'JS SDK Dialog Login' + '</div>' + js({
+                reloadOnLogin : true
+            }));
+}
+
+// Our Express Application:
+// http://expressjs.com/
+var app = express();
+app.use(express.bodyParser());
+app.use(express.cookieParser());
+
+// Notify the developer when the configuration is bad.
+app.all('*', function(req, res, next) {
+    if (!FBAPP.id || !FBAPP.secret || !FBAPP.ns) {
+        return res.send(500, '<a href="https://github.com/daaku/nodejs-fb-sample-app">'
+                + 'Facebook application has not been configured. Follow the readme.' + '</a>');
+    }
+    next();
+});
+
+// Parses the signed_request sent on Canvas requests or from the cookie.
+// https://developers.facebook.com/docs/authentication/signed_request/
+app.all('*', function(req, res, next) {
+    var raw = req.param('signed_request');
+    if (!raw) {
+        raw = req.cookies['fbsr_' + FBAPP.id];
+    }
+    if (!raw) {
+        return next();
+    }
+    try {
+        req.signedRequest = signedRequest.parse(raw, FBAPP.secret, signedRequestMaxAge);
+        return next();
+    } catch (e) {
+        return res.send(400, String(e));
+    }
+});
+
+// Sample home page.
 app.all('/', function(req, res, next) {
     if (req.signedRequest && req.signedRequest.user_id) {
         graphMe(req.signedRequest, function(er, me) {
@@ -62,7 +166,8 @@ app.all('/', function(req, res, next) {
     }
 });
 
-var port = process.env.PORT || 5000;
+// Start your engines.
+var port = process.env.PORT || 3000;
 app.listen(port, function() {
-    console.log("Listening on " + port);
+    console.log('Listening on ' + port);
 });
