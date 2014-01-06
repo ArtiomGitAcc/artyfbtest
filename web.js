@@ -1,4 +1,6 @@
 // web.js
+var FACEBOOK_APP_ID = 207497116103821;
+var FACEBOOK_APP_SECRET = "35f151155d0af455a217d291f919989b";
 var express = require("express");
 var logfmt = require("logfmt");
 var passport = require("passport");
@@ -26,13 +28,13 @@ app.use(express.session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.get('/auth/facebook', passport.authentificate('facebook-canvas'));
-app.get('/auth/facebook/callback', passport.authentificate('facebook-canvas', {
+app.get('/auth/facebook', passport.authenticate('facebook-canvas'));
+app.get('/auth/facebook/callback', passport.authenticate('facebook-canvas', {
     successRedirect : '/',
     failureRedirect : '/error'
 }));
 
-app.post('/auth/facebook/canvas', passport.authentificate('facebook-canvas', {
+app.post('/auth/facebook/canvas', passport.authenticate('facebook-canvas', {
     successRedirect : '/',
     failureRedirect : '/auth/facebook/canvas/autologin'
 }));
