@@ -1,5 +1,6 @@
 // web.js
 
+var express = require('express');
 var fs = require('fs');
 var url = require('url');
 var querystring = require('querystring');
