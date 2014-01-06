@@ -18,6 +18,7 @@
   "dependencies": {
     "logfmt": "~0.17.0",
     "express": "~3.4.6",
+    "passport" : "0.1.18",
     "passport-facebook-canvas": "0.0.3"
   }
 }
