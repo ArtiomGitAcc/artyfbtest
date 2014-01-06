@@ -8,8 +8,8 @@ var FacebookStrategy = require('passport-facebook-canvas');
 var app = express();
 
 passport.use(new FacebookStrategy({
-    clientID : FACEBOOK_APP_ID,
-    clientSecret : FACEBOOK_APP_SECRET,
+    clientID : process.env.FACEBOOK_APP_ID,
+    clientSecret : process.env.FACEBOOK_SECRET,
     callbackURL : "http://intense-basin-4765.herokuapp.com/auth/facebook/callback"
 }, function(accessToken, refreshToken, profile, done) {
     User.findOrCreate({
