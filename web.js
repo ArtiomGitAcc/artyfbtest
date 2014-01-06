@@ -1,4 +1,6 @@
 // web.js
+var FACEBOOK_APP_ID = 207497116103821;
+var FACEBOOK_APP_SECRET = "35f151155d0af455a217d291f919989b";
 var express = require("express");
 var logfmt = require("logfmt");
 var passport = require("passport");
