@@ -6,8 +6,8 @@ var FacebookStrategy = require('passport-facebook-canvas');
 var app = express();
 
 passport.use(new FacebookStrategy({
-    clientID : FACEBOOK_APP_ID,
-    clientSecret : FACEBOOK_APP_SECRET,
+    clientID : process.env.FACEBOOK_APP_ID,
+    clientSecret : process.env.FACEBOOK_SECRET,
     callbackURL : "http://intense-basin-4765.herokuapp.com/auth/facebook/callback"
 }, function(accessToken, refreshToken, profile, done) {
     User.findOrCreate({
@@ -26,13 +26,13 @@ app.use(express.session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.get('/auth/facebook', passport.authentificate('facebook-canvas'));
-app.get('/auth/facebook/callback', passport.authentificate('facebook-canvas', {
+app.get('/auth/facebook', passport.authenticate('facebook-canvas'));
+app.get('/auth/facebook/callback', passport.authenticate('facebook-canvas', {
     successRedirect : '/',
     failureRedirect : '/error'
 }));
 
-app.post('/auth/facebook/canvas', passport.authentificate('facebook-canvas', {
+app.post('/auth/facebook/canvas', passport.authenticate('facebook-canvas', {
     successRedirect : '/',
     failureRedirect : '/auth/facebook/canvas/autologin'
 }));
@@ -42,9 +42,23 @@ app.get('/auth/facebook/canvas/autologin', function(req, res) {
             + 'top.location.href = "/auth/facebook";</script></body></html>');
 });
 
-// app.get('/', function(req, res) {
-// res.send('Hello World!');
-// });
+app.all('/', function(req, res, next) {
+    if (req.signedRequest && req.signedRequest.user_id) {
+        graphMe(req.signedRequest, function(er, me) {
+            if (er) {
+                console.error(er);
+                return sendLogin(req, res, next);
+            }
+            res.send(200, '<!doctype html>' + 'Welcome ' + me.name + ' with ID ' + me.id + '.<br>'
+                    + '<button id="sample-logout">Logout</button> '
+                    + '<button id="sample-disconnect">Disconnect</button>' + js({
+                        reloadOnLogout : true
+                    }));
+        });
+    } else {
+        sendLogin(req, res, next);
+    }
+});
 
 var port = process.env.PORT || 5000;
 app.listen(port, function() {
